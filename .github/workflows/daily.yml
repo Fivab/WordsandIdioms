@@ -1,10 +1,24 @@
-name: Daily IPMAT Vocab Drill
+name: Daily 3x IPMAT Vocab Drill
 
 on:
   schedule:
-    # 02:30 UTC corresponds to 08:00 AM IST
-    - cron: '30 2 * * *'
+    # 05:20 AM IST -> 23:50 UTC
+    - cron: '50 23 * * *'
+    # 01:00 PM IST -> 07:30 UTC
+    - cron: '30 7 * * *'
+    # 09:00 PM IST -> 15:30 UTC
+    - cron: '30 15 * * *'
   workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Choose which slot to run manually'
+        required: true
+        default: 'morning'
+        type: choice
+        options:
+          - morning
+          - afternoon
+          - night
 
 permissions:
   contents: write
@@ -14,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -25,13 +39,27 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run script
-        run: python wandi.py
+      - name: Determine time slot and run script
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SLOT="${{ github.event.inputs.slot }}"
+          else
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" -ge 22 ] || [ "$HOUR" -le 2 ]; then
+              SLOT="morning"
+            elif [ "$HOUR" -ge 6 ] && [ "$HOUR" -le 10 ]; then
+              SLOT="afternoon"
+            else
+              SLOT="night"
+            fi
+          fi
+          echo "Executing for slot: $SLOT"
+          python wandi.py "$SLOT"
 
       - name: Commit updated state
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
-          git commit -m "Auto-advanced vocab day [skip ci]" || exit 0
+          git commit -m "Auto-advanced vocab slot [skip ci]" || exit 0
           git push
