@@ -8,7 +8,6 @@ BOT_TOKEN = "8792746318:AAEx1oJuxCa9hVxAMKjcDIE-z7_tAOAOulg"
 CHAT_ID = "8962564147"
 STATE_FILE = "state.json"
 
-# Set IST Timezone (UTC + 5:30)
 IST = timezone(timedelta(hours=5, minutes=30))
 
 VOCAB_LIST = [
@@ -200,15 +199,15 @@ IDIOMS_AND_PHRASES = [
     {"phrase": "work out", "meaning": "solve/develop successfully", "usage": "They worked out a solution."}
 ]
 
-WORDS_PER_BATCH = 3
-batches = [VOCAB_LIST[i:i + WORDS_PER_BATCH] for i in range(0, len(VOCAB_LIST), WORDS_PER_BATCH)]
+ITEMS_PER_BATCH = 3
+vocab_batches = [VOCAB_LIST[i:i + ITEMS_PER_BATCH] for i in range(0, len(VOCAB_LIST), ITEMS_PER_BATCH)]
+idiom_batches = [IDIOMS_AND_PHRASES[i:i + ITEMS_PER_BATCH] for i in range(0, len(IDIOMS_AND_PHRASES), ITEMS_PER_BATCH)]
 
 def load_state():
     default_state = {
         "startDate": datetime.now(IST).strftime("%Y-%m-%d"),
         "lastSentDate": "",
-        "lastSlot": "",
-        "idiomIdx": 0
+        "lastSlot": ""
     }
     if not os.path.exists(STATE_FILE):
         with open(STATE_FILE, "w") as f:
@@ -232,50 +231,90 @@ def format_word_block(item, idx):
         f"   • Example: \"{item['usage']}\"\n\n"
     )
 
-def generate_payload(day, slot, idiom_idx):
+def format_idiom_block(item, idx):
+    return (
+        f"{idx}. *{item['phrase']}*\n"
+        f"   • Meaning: {item['meaning']}\n"
+        f"   • Example: \"{item['usage']}\"\n\n"
+    )
+
+def generate_payload(day, slot):
     curr_idx = day - 1
+    idiom_idx = curr_idx % len(idiom_batches)
     msg = ""
 
     if slot == "morning":
         msg = f"🌅 *IPMAT VA DRILL — DAY {day} (05:20 AM)*\n\n"
-        if curr_idx < len(batches):
+        
+        # Today's words
+        if curr_idx < len(vocab_batches):
             msg += "*🆕 TODAY'S 3 NEW WORDS (Release 1 of 3):*\n\n"
-            for i, item in enumerate(batches[curr_idx], 1):
+            for i, item in enumerate(vocab_batches[curr_idx], 1):
                 msg += format_word_block(item, i)
+        
+        # Today's idioms
+        msg += "*🆕 TODAY'S IDIOMS & PHRASES (Release 1 of 3):*\n\n"
+        for i, item in enumerate(idiom_batches[idiom_idx], 1):
+            msg += format_idiom_block(item, i)
+
+        # Yesterday's words & idioms
         if curr_idx - 1 >= 0:
+            prev_idiom_idx = (curr_idx - 1) % len(idiom_batches)
             msg += "*🔁 YESTERDAY'S WORDS (Day -1, Review 1 of 2):*\n\n"
-            for i, item in enumerate(batches[curr_idx - 1], 1):
+            for i, item in enumerate(vocab_batches[curr_idx - 1], 1):
                 msg += format_word_block(item, i)
+            msg += "*🔁 YESTERDAY'S IDIOMS (Day -1, Review 1 of 2):*\n\n"
+            for i, item in enumerate(idiom_batches[prev_idiom_idx], 1):
+                msg += format_idiom_block(item, i)
 
     elif slot == "afternoon":
         msg = f"☀️ *IPMAT VA DRILL — DAY {day} (01:00 PM)*\n\n"
-        if curr_idx < len(batches):
+        
+        # Today's words
+        if curr_idx < len(vocab_batches):
             msg += "*🔁 TODAY'S WORDS (Release 2 of 3):*\n\n"
-            for i, item in enumerate(batches[curr_idx], 1):
+            for i, item in enumerate(vocab_batches[curr_idx], 1):
                 msg += format_word_block(item, i)
+        
+        # Today's idioms
+        msg += "*🔁 TODAY'S IDIOMS & PHRASES (Release 2 of 3):*\n\n"
+        for i, item in enumerate(idiom_batches[idiom_idx], 1):
+            msg += format_idiom_block(item, i)
+
+        # Yesterday's words & idioms
         if curr_idx - 1 >= 0:
+            prev_idiom_idx = (curr_idx - 1) % len(idiom_batches)
             msg += "*🔁 YESTERDAY'S WORDS (Day -1, Review 2 of 2):*\n\n"
-            for i, item in enumerate(batches[curr_idx - 1], 1):
+            for i, item in enumerate(vocab_batches[curr_idx - 1], 1):
                 msg += format_word_block(item, i)
+            msg += "*🔁 YESTERDAY'S IDIOMS (Day -1, Review 2 of 2):*\n\n"
+            for i, item in enumerate(idiom_batches[prev_idiom_idx], 1):
+                msg += format_idiom_block(item, i)
 
     elif slot == "night":
         msg = f"🌙 *IPMAT VA DRILL — DAY {day} (09:00 PM)*\n\n"
-        if curr_idx < len(batches):
+        
+        # Today's words
+        if curr_idx < len(vocab_batches):
             msg += "*🔁 TODAY'S WORDS (Release 3 of 3):*\n\n"
-            for i, item in enumerate(batches[curr_idx], 1):
+            for i, item in enumerate(vocab_batches[curr_idx], 1):
                 msg += format_word_block(item, i)
-        if curr_idx - 2 >= 0:
-            msg += "*🔁 DAY-BEFORE-YESTERDAY'S WORDS (Day -2, Final Review):*\n\n"
-            for i, item in enumerate(batches[curr_idx - 2], 1):
-                msg += format_word_block(item, i)
+        
+        # Today's idioms
+        msg += "*🔁 TODAY'S IDIOMS & PHRASES (Release 3 of 3):*\n\n"
+        for i, item in enumerate(idiom_batches[idiom_idx], 1):
+            msg += format_idiom_block(item, i)
 
-    idiom = IDIOMS_AND_PHRASES[idiom_idx % len(IDIOMS_AND_PHRASES)]
-    msg += (
-        f"*💡 IDIOM / PHRASE:*\n"
-        f"• *{idiom['phrase']}*\n"
-        f"  Meaning: {idiom['meaning']}\n"
-        f"  Example: \"{idiom['usage']}\""
-    )
+        # Day-before-yesterday's words & idioms
+        if curr_idx - 2 >= 0:
+            past_idiom_idx = (curr_idx - 2) % len(idiom_batches)
+            msg += "*🔁 DAY-BEFORE-YESTERDAY'S WORDS (Day -2, Final Review):*\n\n"
+            for i, item in enumerate(vocab_batches[curr_idx - 2], 1):
+                msg += format_word_block(item, i)
+            msg += "*🔁 DAY-BEFORE-YESTERDAY'S IDIOMS (Day -2, Final Review):*\n\n"
+            for i, item in enumerate(idiom_batches[past_idiom_idx], 1):
+                msg += format_idiom_block(item, i)
+
     return msg
 
 def send_telegram(text):
@@ -292,12 +331,10 @@ if __name__ == "__main__":
     slot = sys.argv[1] if len(sys.argv) > 1 else "morning"
     state = load_state()
 
-    # Calculate real Day number from start date in IST
     today_ist = datetime.now(IST).date()
     start_date = datetime.strptime(state["startDate"], "%Y-%m-%d").date()
     current_day = (today_ist - start_date).days + 1
 
-    # Prevent duplicate runs of the same slot on the same day
     today_str = today_ist.strftime("%Y-%m-%d")
     force_run = len(sys.argv) > 2 and sys.argv[2] == "--force"
 
@@ -305,8 +342,7 @@ if __name__ == "__main__":
         print(f"⚠️ Slot '{slot}' already executed today ({today_str}). Exiting to prevent duplicates.")
         sys.exit(0)
 
-    idiom_idx = state.get("idiomIdx", 0)
-    drill = generate_payload(current_day, slot, idiom_idx)
+    drill = generate_payload(current_day, slot)
 
     print(f"Executing Day {current_day} [{slot}] for {today_str}...")
     res = send_telegram(drill)
@@ -315,7 +351,6 @@ if __name__ == "__main__":
         print("✅ Sent successfully to Telegram.")
         state["lastSentDate"] = today_str
         state["lastSlot"] = slot
-        state["idiomIdx"] = idiom_idx + 1
         save_state(state)
     else:
         print("❌ Telegram API error:", res)
