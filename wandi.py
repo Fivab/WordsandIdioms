@@ -4,7 +4,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 import requests
 
-BOT_TOKEN = "8792746318:AAEx1oJuxCa9hVxAMKjcDIE-z7_tA0AOulg"
+BOT_TOKEN = "8792746318:AAEx1oJuxCa9hVxAMKjcDIE-z7_tAOAOulg"
 CHAT_ID = "8962564147"
 STATE_FILE = "state.json"
 
