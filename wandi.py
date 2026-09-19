@@ -1,11 +1,15 @@
 import json
 import os
 import sys
+from datetime import datetime, timezone, timedelta
 import requests
 
-BOT_TOKEN = "8792746318:AAEx1oJuxCa9hVxAMKjcDIE-z7_tAOAOulg"
+BOT_TOKEN = "8792746318:AAEx1oJuxCa9hVxAMKjcDIE-z7_tA0AOulg"
 CHAT_ID = "8962564147"
 STATE_FILE = "state.json"
+
+# Set IST Timezone (UTC + 5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 VOCAB_LIST = [
     {"word": "assiduous", "meaning": "very hardworking and persistent", "synonyms": "diligent, industrious, painstaking", "usage": "She was assiduous in her preparation."},
@@ -200,20 +204,25 @@ WORDS_PER_BATCH = 3
 batches = [VOCAB_LIST[i:i + WORDS_PER_BATCH] for i in range(0, len(VOCAB_LIST), WORDS_PER_BATCH)]
 
 def load_state():
+    default_state = {
+        "startDate": datetime.now(IST).strftime("%Y-%m-%d"),
+        "lastSentDate": "",
+        "lastSlot": "",
+        "idiomIdx": 0
+    }
     if not os.path.exists(STATE_FILE):
-        init_state = {"currentDay": 1, "slot": "morning", "idiomIdx": 0}
         with open(STATE_FILE, "w") as f:
-            json.dump(init_state, f)
-        return init_state
+            json.dump(default_state, f, indent=2)
+        return default_state
     try:
         with open(STATE_FILE, "r") as f:
             return json.load(f)
     except Exception:
-        return {"currentDay": 1, "slot": "morning", "idiomIdx": 0}
+        return default_state
 
 def save_state(state):
     with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+        json.dump(state, f, indent=2)
 
 def format_word_block(item, idx):
     return (
@@ -229,44 +238,37 @@ def generate_payload(day, slot, idiom_idx):
 
     if slot == "morning":
         msg = f"🌅 *IPMAT VA DRILL — DAY {day} (05:20 AM)*\n\n"
-        # 3 New Words for today
         if curr_idx < len(batches):
-            msg += "*🆕 TODAY'S 3 NEW WORDS (1st time):*\n\n"
+            msg += "*🆕 TODAY'S 3 NEW WORDS (Release 1 of 3):*\n\n"
             for i, item in enumerate(batches[curr_idx], 1):
                 msg += format_word_block(item, i)
-        # Yesterday's batch (2nd time)
         if curr_idx - 1 >= 0:
-            msg += "*🔁 YESTERDAY'S WORDS (Day -1, 4th time total):*\n\n"
+            msg += "*🔁 YESTERDAY'S WORDS (Day -1, Review 1 of 2):*\n\n"
             for i, item in enumerate(batches[curr_idx - 1], 1):
                 msg += format_word_block(item, i)
 
     elif slot == "afternoon":
         msg = f"☀️ *IPMAT VA DRILL — DAY {day} (01:00 PM)*\n\n"
-        # Today's batch (2nd time)
         if curr_idx < len(batches):
-            msg += "*🔁 TODAY'S WORDS (2nd time):*\n\n"
+            msg += "*🔁 TODAY'S WORDS (Release 2 of 3):*\n\n"
             for i, item in enumerate(batches[curr_idx], 1):
                 msg += format_word_block(item, i)
-        # Yesterday's batch (5th time total)
         if curr_idx - 1 >= 0:
-            msg += "*🔁 YESTERDAY'S WORDS (Day -1, 5th time total):*\n\n"
+            msg += "*🔁 YESTERDAY'S WORDS (Day -1, Review 2 of 2):*\n\n"
             for i, item in enumerate(batches[curr_idx - 1], 1):
                 msg += format_word_block(item, i)
 
     elif slot == "night":
         msg = f"🌙 *IPMAT VA DRILL — DAY {day} (09:00 PM)*\n\n"
-        # Today's batch (3rd time)
         if curr_idx < len(batches):
-            msg += "*🔁 TODAY'S WORDS (3rd time):*\n\n"
+            msg += "*🔁 TODAY'S WORDS (Release 3 of 3):*\n\n"
             for i, item in enumerate(batches[curr_idx], 1):
                 msg += format_word_block(item, i)
-        # Day-before-yesterday's batch (final review, 6th time total)
         if curr_idx - 2 >= 0:
             msg += "*🔁 DAY-BEFORE-YESTERDAY'S WORDS (Day -2, Final Review):*\n\n"
             for i, item in enumerate(batches[curr_idx - 2], 1):
                 msg += format_word_block(item, i)
 
-    # Idiom of the current broadcast
     idiom = IDIOMS_AND_PHRASES[idiom_idx % len(IDIOMS_AND_PHRASES)]
     msg += (
         f"*💡 IDIOM / PHRASE:*\n"
@@ -280,36 +282,41 @@ def send_telegram(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
     try:
-        resp = requests.post(url, json=payload, timeout=10)
+        resp = requests.post(url, json=payload, timeout=15)
         return resp.json()
     except Exception as e:
         print(f"Network error: {e}")
         return None
 
 if __name__ == "__main__":
+    slot = sys.argv[1] if len(sys.argv) > 1 else "morning"
     state = load_state()
-    
-    # Slot can be passed via command-line argument (morning, afternoon, night)
-    slot = sys.argv[1] if len(sys.argv) > 1 else state.get("slot", "morning")
-    day = state.get("currentDay", 1)
-    idiom_idx = state.get("idiomIdx", 0)
 
-    drill = generate_payload(day, slot, idiom_idx)
-    print(f"Sending Day {day} [{slot}] drill to Telegram...")
+    # Calculate real Day number from start date in IST
+    today_ist = datetime.now(IST).date()
+    start_date = datetime.strptime(state["startDate"], "%Y-%m-%d").date()
+    current_day = (today_ist - start_date).days + 1
+
+    # Prevent duplicate runs of the same slot on the same day
+    today_str = today_ist.strftime("%Y-%m-%d")
+    force_run = len(sys.argv) > 2 and sys.argv[2] == "--force"
+
+    if not force_run and state.get("lastSentDate") == today_str and state.get("lastSlot") == slot:
+        print(f"⚠️ Slot '{slot}' already executed today ({today_str}). Exiting to prevent duplicates.")
+        sys.exit(0)
+
+    idiom_idx = state.get("idiomIdx", 0)
+    drill = generate_payload(current_day, slot, idiom_idx)
+
+    print(f"Executing Day {current_day} [{slot}] for {today_str}...")
     res = send_telegram(drill)
 
     if res and res.get("ok"):
-        print("✅ Sent successfully!")
-        # Advance state
-        idiom_idx += 1
-        if slot == "night":
-            day += 1
-            next_slot = "morning"
-        elif slot == "morning":
-            next_slot = "afternoon"
-        else:
-            next_slot = "night"
-
-        save_state({"currentDay": day, "slot": next_slot, "idiomIdx": idiom_idx})
+        print("✅ Sent successfully to Telegram.")
+        state["lastSentDate"] = today_str
+        state["lastSlot"] = slot
+        state["idiomIdx"] = idiom_idx + 1
+        save_state(state)
     else:
-        print("❌ Telegram API returned error:", res)
+        print("❌ Telegram API error:", res)
+        sys.exit(1)
