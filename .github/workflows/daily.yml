@@ -2,7 +2,7 @@ name: Daily 3x IPMAT Vocab Drill
 
 on:
   schedule:
-    # 05:20 AM IST -> 23:50 UTC
+    # 05:20 AM IST -> 23:50 UTC (previous day)
     - cron: '50 23 * * *'
     # 01:00 PM IST -> 07:30 UTC
     - cron: '30 7 * * *'
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       slot:
-        description: 'Choose which slot to run manually'
+        description: 'Choose slot to trigger'
         required: true
         default: 'morning'
         type: choice
@@ -39,27 +39,34 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Determine time slot and run script
+      - name: Determine Slot and Execute Drill
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             SLOT="${{ github.event.inputs.slot }}"
+            python wandi.py "$SLOT" --force
           else
-            HOUR=$(date -u +%H)
-            if [ "$HOUR" -ge 22 ] || [ "$HOUR" -le 2 ]; then
+            # Calculate IST hour (UTC + 5.5 hours)
+            UTC_MIN=$(date -u +%M)
+            UTC_HR=$(date -u +%H)
+            TOTAL_IST_MIN=$(( UTC_HR * 60 + UTC_MIN + 330 ))
+            IST_HR=$(( (TOTAL_IST_MIN / 60) % 24 ))
+
+            if [ "$IST_HR" -ge 4 ] && [ "$IST_HR" -le 8 ]; then
               SLOT="morning"
-            elif [ "$HOUR" -ge 6 ] && [ "$HOUR" -le 10 ]; then
+            elif [ "$IST_HR" -ge 12 ] && [ "$IST_HR" -le 16 ]; then
               SLOT="afternoon"
             else
               SLOT="night"
             fi
+
+            echo "Current IST Hour: $IST_HR | Assigned Slot: $SLOT"
+            python wandi.py "$SLOT"
           fi
-          echo "Executing for slot: $SLOT"
-          python wandi.py "$SLOT"
 
       - name: Commit updated state
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
-          git commit -m "Auto-advanced vocab slot [skip ci]" || exit 0
+          git commit -m "Save state for $SLOT [skip ci]" || echo "No changes to state"
           git push
